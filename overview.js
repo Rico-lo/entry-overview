@@ -68,36 +68,37 @@ function drawWinChart(score) {
 let last=null,token='',busy=false,failed=false;
 function render(s){
  last=s;
- write('scope',s.account_label||'ENTRY 影子账户');write('asof',time(s.as_of));
  const f=s.financial,a=s.account,t=s.trading_health||{},v=s.vps||{},d=s.deployment||{},x=s.api_access_health||{};
- const history=f?.history,full=history?.kind==='full_history';
- write('scope-note',full?'旧封存账本＋当前账本 · 含手续费 · 不含返佣':'当前影子账本 · 含手续费 · 不含返佣');
- if(full)write('scope','完整结算历史 · '+time(history.first_market_closed_at).split(' ')[0]+' 起 · 旧账本 '+history.archived_rounds+' 局 ＋ 当前账本 '+history.current_rounds+' 局');
+ const full=f?.history?.kind==='full_history';
+ write('scope-note',(full?'全历史':'当前账本')+' · 含手续费，不含返佣');
  renderDrawdownPeriod(f?.max_drawdown);
 
  pnl(el('total-pnl'),f?.total?.settled_pnl_micros);pnl(el('today-pnl'),f?.today?.settled_pnl_micros);
  write('day',f?.date_beijing||'北京时间');write('total-rounds',wins(f?.total));write('today-rounds',wins(f?.today));write('total-rate',rate(f?.total));write('today-rate',rate(f?.today));
  drawWinChart(f?.total);
  write('drawdown',money(f?.max_drawdown?.amount_micros));write('days',f?num(f.total.winning_days,0)+' / '+num(f.total.losing_days,0):'—');write('flats',f?num(f.total.flat_rounds,0):'—');
- write('spent',money(a?.spent_micros));write('fees',money(a?.fees_micros));write('payout',money(a?.payout_micros));write('unsettled',money(a?.unsettled_spent_micros));write('seq',f?num(f.ledger_sequence,0):'未核实');
+ write('spent',money(a?.spent_micros));write('fees',money(a?.fees_micros));write('payout',money(a?.payout_micros));write('unsettled',money(a?.unsettled_spent_micros));
  badge('health',t.state);write('connection',t.clob_connection==='connected'?'CLOB 已连接':'CLOB '+(t.clob_connection||'未知'));write('pending','在途订单 '+num(t.pending_orders,0));write('book-time','有效盘口时间 '+time(t.last_market_data_at));
  el('issues').replaceChildren();for(const i of t.issues||[]){const li=document.createElement('li');li.textContent=i.code+' · '+i.detail;el('issues').append(li);}
  el('latencies').replaceChildren();for(const [key,title] of [['actor.signal_queue','策略队列'],['runtime.consume','行情消费'],['dispatch.t0_to_http','确认 → 影子 HTTP'],['receipt.reconcile','成交对账']]){const m=t.latency_since_entry_start?.[key];el('latencies').append(row([title,m?num(m.count,0):'—',m?.count?'≤ '+num(m.p99_ms)+' ms':'—',m?.count?num(m.max_ms)+' ms':'—']));}
- write('host-name',v.hostname);write('cpu',Number.isFinite(v.cpu_percent)?num(v.cpu_percent,1)+'%':'等待第二次采样');write('steal',Number.isFinite(v.cpu_steal_percent)?num(v.cpu_steal_percent,1)+'%':'等待第二次采样');write('memory',bytes(v.memory_available_bytes)+' / '+bytes(v.memory_total_bytes));write('disk',bytes(v.disk_available_bytes)+' / '+bytes(v.disk_total_bytes));write('load',num(v.load_1m));write('host-time','采样 '+time(v.sampled_at)+'。steal 单列；AWS 积分需另查控制台。');
- badge('unit-state',d.unit_state);write('started',time(d.entry_started_at));write('release',d.release||'尚未核实');write('unit',d.unit);write('restarts',num(d.automatic_restarts,0));
+ write('cpu',Number.isFinite(v.cpu_percent)?num(v.cpu_percent,1)+'%':'等待第二次采样');write('steal',Number.isFinite(v.cpu_steal_percent)?num(v.cpu_steal_percent,1)+'%':'等待第二次采样');write('memory',bytes(v.memory_available_bytes)+' / '+bytes(v.memory_total_bytes));write('disk',bytes(v.disk_available_bytes)+' / '+bytes(v.disk_total_bytes));write('load',num(v.load_1m));write('host-time','采样 '+time(v.sampled_at));
+ badge('unit-state',d.unit_state);write('started',time(d.entry_started_at));write('release',d.release?.match(/(?:^|-)(go\d+)(?:-|$)/i)?.[1].toUpperCase()||d.release||'尚未核实');el('release').title=d.release||'';write('restarts',num(d.automatic_restarts,0));
  badge('access-health',x.state);write('requests',num(x.requests,0)+' / '+num(x.peak_requests_per_minute,0));write('auth-errors',num(x.auth_failures,0)+' / '+num(x.rate_limited,0));write('server-errors',num(x.server_errors,0)+' / '+num(x.max_completed_request_ms)+' ms');write('suspicious',x.suspicious_traffic===true?'检测到异常访问模式':x.suspicious_traffic===false?'当前未检测到':'未知');
  notice([s.snapshot_error,s.financial_error?'账本核对失败：'+s.financial_error:'',d.error?'部署状态：'+d.error:''].filter(Boolean).join('；'));age();
 }
 function age(){
  if(!last)return;
- const sec=Math.max(0,Math.floor((Date.now()-Date.parse(last.as_of))/1000));
+ const stamp=Date.parse(last.as_of);
+ const sec=Number.isFinite(stamp)?Math.max(0,Math.floor((Date.now()-stamp)/1000)):Infinity;
  const stale=failed||last.snapshot_stale||sec>=30;
  document.body.classList.toggle('stale',stale);
- write('fresh-label',stale?'历史快照 · '+sec+' 秒前':'已核对快照 · '+sec+' 秒前');
+ const elapsed=sec<60?sec+' 秒前':Math.floor(sec/60)+' 分钟前';
+ write('fresh-label',!Number.isFinite(sec)?'快照时间未知':stale?'快照 '+elapsed:'更新 '+time(last.as_of).split(' ').at(-1));
+ el('fresh-label').title=time(last.as_of)+' · 北京时间';
+ el('service-detail').hidden=!stale&&last.service_health?.state==='healthy';
  if(stale){
   badge('service-health','unknown');
-  const previous=states[last.service_health?.state];
-  write('service-detail',(previous?'上次采样「'+previous+'」。':'')+'刷新可核实当前状态');
+  write('service-detail','快照已过期，刷新后核实服务状态。');
  }else{
   badge('service-health',last.service_health?.state);
   write('service-detail',last.service_health?.detail);
