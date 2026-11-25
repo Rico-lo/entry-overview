@@ -91,7 +91,7 @@ function render(s){
 function age(){
  if(!last)return;
  const sec=Math.max(0,Math.floor((Date.now()-Date.parse(last.as_of))/1000));
- const stale=failed||last.snapshot_stale||sec>=30;
+ const stale=failed||last.snapshot_stale||sec>=30||Math.floor(Date.now()/300000)!==Math.floor(Date.parse(last.as_of)/300000);
  document.body.classList.toggle('stale',stale);
  write('fresh-label',stale?'历史快照 · '+sec+' 秒前':'已核对快照 · '+sec+' 秒前');
  if(stale){
@@ -100,7 +100,9 @@ function age(){
   write('service-detail',(previous?'上次采样「'+previous+'」。':'')+'刷新可核实当前状态');
  }else{
   badge('service-health',last.service_health?.state);
-  write('service-detail',last.service_health?.detail);
+  const slc=last.slc_first?.label;
+  const detail=last.service_health?.state==='healthy'&&slc?'':last.service_health?.detail;
+  write('service-detail',[...new Set([detail,slc].filter(Boolean))].join(' · '));
  }
  if(stale){write('health','上次快照');el('health').className='badge warn';}else badge('health',last.trading_health?.state);
 }
